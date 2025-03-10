@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request, Form
 from pymongo import MongoClient
 import os
-from openai import OpenAI
+import openai  # Asegúrate de importar OpenAI correctamente
 from starlette.responses import Response
 
 app = FastAPI()
@@ -13,16 +13,15 @@ db = client["assistant"]
 notas_collection = db["notas"]
 
 # Configurar OpenAI GPT
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")  # Debes agregar esta variable en Render
-client_openai = OpenAI(api_key=OPENAI_API_KEY)
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 def get_gpt_response(user_message):
-    response = client_openai.ChatCompletion.create(
+    response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
         messages=[{"role": "system", "content": "Eres un asistente personal en WhatsApp, ayuda a Max con notas, recordatorios y eventos."},
                   {"role": "user", "content": user_message}]
     )
-    return response['choices'][0]['message']['content'].strip()
+    return response["choices"][0]["message"]["content"].strip()
 
 @app.post("/whatsapp_webhook")
 async def whatsapp_webhook(request: Request):
