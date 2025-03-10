@@ -82,19 +82,14 @@ async def whatsapp_webhook(request: Request):
             response_message = f"⏰ Recordatorio guardado: {datos_recordatorio['tarea']} para el {datos_recordatorio['fecha_hora'].strftime('%Y-%m-%d %H:%M')}"
         else:
             prompt = f"""
-            El usuario escribió: "{message}".
+            El usuario escribió: \"{message}\".
 
-            Si quiere guardar una nota responde:
-            {{"accion": "guardar_nota", "contenido": "contenido de la nota"}}
+            Decide claramente y responde únicamente con el JSON correspondiente:
 
-            Si quiere listar sus notas responde:
-            {{"accion": "listar_notas"}}
-
-            Si quiere listar sus recordatorios responde:
-            {{"accion": "listar_recordatorios"}}
-
-            Si ninguna aplica responde:
-            {{"accion": "ninguna"}}
+            {"accion": "guardar_nota", "contenido": "contenido"}
+            {"accion": "listar_notas"}
+            {"accion": "listar_recordatorios"}
+            {"accion": "ninguna"}
             """
 
             respuesta = openai.chat.completions.create(
@@ -105,15 +100,15 @@ async def whatsapp_webhook(request: Request):
 
             decision = json.loads(respuesta.choices[0].message.content)
 
-            if decision["accion"] == "guardar_nota":
+            if decision.get("accion") == "guardar_nota":
                 notas_collection.insert_one({"contenido": decision["contenido"]})
                 response_message = f"✅ Nota guardada: {decision['contenido']}"
 
-            elif decision["accion"] == "listar_notas":
+            elif decision.get("accion") == "listar_notas":
                 notas = list(notas_collection.find({}, {"_id": 0, "contenido": 1}))
                 response_message = "📝 Notas guardadas:\n" + "\n".join([f"- {nota['contenido']}" for nota in notas]) if notas else "📂 No tienes notas guardadas."
 
-            elif decision["accion"] == "listar_recordatorios":
+            elif decision.get("accion") == "listar_recordatorios":
                 recordatorios = list(recordatorios_collection.find({"numero_usuario": sender}, {"_id": 0, "tarea": 1, "fecha_hora": 1}))
                 response_message = "⏰ Recordatorios guardados:\n" + "\n".join([f"- {rec['tarea']} para el {rec['fecha_hora'].strftime('%Y-%m-%d %H:%M')}" for rec in recordatorios]) if recordatorios else "📂 No tienes recordatorios guardados."
 
@@ -130,3 +125,4 @@ async def whatsapp_webhook(request: Request):
     except Exception as e:
         print(f"Error en webhook: {e}")
         return Response(content="<Response><Message>❌ Error en el servidor.</Message></Response>", media_type="application/xml")
+
