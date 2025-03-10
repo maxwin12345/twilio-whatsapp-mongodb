@@ -3,23 +3,23 @@ from pymongo import MongoClient
 from starlette.responses import Response
 from datetime import datetime
 import os
-import openai
 import json
+from openai import OpenAI
 
 app = FastAPI()
 
-# Conexión a MongoDB Atlas
+# Conexión MongoDB Atlas
 MONGO_URI = os.environ.get("MONGO_URI")
-client = MongoClient(MONGO_URI)
-db = client["assistant"]
+client_mongo = MongoClient(MONGO_URI)
+db = client_mongo["assistant"]
 notas_collection = db["notas"]
 recordatorios_collection = db["recordatorios"]
 
-# Configuración de OpenAI
-openai.api_key = os.environ.get("OPENAI_API_KEY")
+# Configuración nueva API OpenAI
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 def get_gpt_response(user_message):
-    response = openai.ChatCompletion.create(
+    response = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
             {"role": "system", "content": "Eres un asistente personal en WhatsApp, ayuda a Max con notas, recordatorios y eventos."},
@@ -30,25 +30,25 @@ def get_gpt_response(user_message):
 
 def extraer_recordatorio(mensaje_usuario):
     prompt = f"""
-Extrae la tarea, fecha y hora exactas del siguiente mensaje si es un recordatorio.
-Si no es un recordatorio devuelve null.
+    Extrae la tarea, fecha y hora exactas del siguiente mensaje si es un recordatorio.
+    Si no es un recordatorio devuelve null.
 
-Mensaje: "{mensaje_usuario}"
+    Mensaje: \"{mensaje_usuario}\"
 
-Devuelve en formato JSON:
-{{
-  "tarea": "string",
-  "fecha_hora": "YYYY-MM-DD HH:MM"
-}}
-"""
-    respuesta = openai.ChatCompletion.create(
+    Devuelve en formato JSON:
+    {{
+      "tarea": "string",
+      "fecha_hora": "YYYY-MM-DD HH:MM"
+    }}
+    """
+    respuesta = client.chat.completions.create(
         model="gpt-3.5-turbo",
-        messages=[{"role": "system", "content": prompt}],
+        messages=[{"role": "user", "content": prompt}],
         temperature=0
     )
-    contenido = respuesta.choices[0].message.content
 
-    # Elimina delimitadores de bloques de código si existen
+    contenido = respuesta.choices[0].message.content.strip()
+
     if contenido.startswith("```") and contenido.endswith("```"):
         contenido = contenido.strip("```").strip()
 
@@ -96,14 +96,18 @@ Decide claramente y responde únicamente con el JSON correspondiente:
 {{"accion": "listar_recordatorios"}}
 {{"accion": "ninguna"}}
 """
-            respuesta = openai.ChatCompletion.create(
+
+            respuesta = client.chat.completions.create(
                 model="gpt-3.5-turbo",
-                messages=[{"role": "system", "content": prompt}],
+                messages=[{"role": "user", "content": prompt}],
                 temperature=0
             )
+
             contenido_decision = respuesta.choices[0].message.content.strip()
+            
             if contenido_decision.startswith("```") and contenido_decision.endswith("```"):
                 contenido_decision = contenido_decision.strip("```").strip()
+            
             try:
                 decision = json.loads(contenido_decision)
             except json.JSONDecodeError as e:
