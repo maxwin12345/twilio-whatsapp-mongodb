@@ -2,4 +2,4 @@ fastapi
 uvicorn
 pymongo
 python-multipart
-openai
+openai>=1.0.0
