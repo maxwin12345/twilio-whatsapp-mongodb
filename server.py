@@ -30,17 +30,19 @@ def get_gpt_response(user_message):
 
 def extraer_recordatorio(mensaje_usuario):
     prompt = f"""
-    Extrae la tarea, fecha y hora exactas del siguiente mensaje si es un recordatorio.
-    Si no es un recordatorio devuelve null.
+Extrae la tarea, fecha y hora exactas del siguiente mensaje si es un recordatorio.
+Si no es un recordatorio devuelve null.
 
-    Mensaje: \"{mensaje_usuario}\"
+Ejemplo de respuesta válida:
+{{
+  "tarea": "Comprar leche",
+  "fecha_hora": "2025-03-10 15:00"
+}}
 
-    Devuelve en formato JSON:
-    {{
-      "tarea": "string",
-      "fecha_hora": "YYYY-MM-DD HH:MM"
-    }}
-    """
+Mensaje: "{mensaje_usuario}"
+
+Devuelve exactamente en este formato JSON.
+"""
     respuesta = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[{"role": "user", "content": prompt}],
@@ -57,11 +59,15 @@ def extraer_recordatorio(mensaje_usuario):
 
     try:
         datos_recordatorio = json.loads(contenido)
+
+        # Asegurar que la fecha tenga el formato correcto
         fecha_hora_obj = datetime.strptime(datos_recordatorio["fecha_hora"], "%Y-%m-%d %H:%M")
         datos_recordatorio["fecha_hora"] = fecha_hora_obj
+
+        print(f"✅ Recordatorio extraído: {datos_recordatorio}")  # Debug
         return datos_recordatorio
     except (json.JSONDecodeError, ValueError, KeyError) as e:
-        print(f"Error al extraer recordatorio: {e}")
+        print(f"⚠️ Error al extraer recordatorio: {e}")
         return None
 
 @app.post("/whatsapp_webhook")
@@ -87,64 +93,62 @@ async def whatsapp_webhook(request: Request):
             )
         else:
             prompt = f"""
-            El usuario escribió: "{message}".
-            
-            Decide claramente la acción que se debe tomar y responde ÚNICAMENTE con el JSON correspondiente:
-            
-            Si es una nota:
-            {{
-              "accion": "guardar_nota",
-              "contenido": "Texto de la nota"
-            }}
-            
-            Si el usuario quiere ver sus notas:
-            {{
-              "accion": "listar_notas"
-            }}
-            
-            Si el usuario quiere ver sus recordatorios:
-            {{
-              "accion": "listar_recordatorios"
-            }}
-            
-            Si el usuario quiere actualizar un recordatorio:
-            {{
-              "accion": "actualizar_recordatorio",
-              "id": "ID del recordatorio",
-              "nueva_fecha": "YYYY-MM-DD HH:MM"
-            }}
-            
-            Si el usuario quiere eliminar un recordatorio:
-            {{
-              "accion": "eliminar_recordatorio",
-              "id": "ID del recordatorio"
-            }}
-            
-            Si no entiende el mensaje:
-            {{
-              "accion": "ninguna"
-            }}
-            
-            Responde solo en formato JSON sin texto adicional.
-            """
+El usuario escribió: "{message}".
+
+Decide claramente la acción que se debe tomar y responde ÚNICAMENTE con el JSON correspondiente:
+
+Si es una nota:
+{{
+  "accion": "guardar_nota",
+  "contenido": "Texto de la nota"
+}}
+
+Si el usuario quiere ver sus notas:
+{{
+  "accion": "listar_notas"
+}}
+
+Si el usuario quiere ver sus recordatorios:
+{{
+  "accion": "listar_recordatorios"
+}}
+
+Si el usuario quiere actualizar un recordatorio:
+{{
+  "accion": "actualizar_recordatorio",
+  "id": "ID del recordatorio",
+  "nueva_fecha": "YYYY-MM-DD HH:MM"
+}}
+
+Si el usuario quiere eliminar un recordatorio:
+{{
+  "accion": "eliminar_recordatorio",
+  "id": "ID del recordatorio"
+}}
+
+Si no entiende el mensaje:
+{{
+  "accion": "ninguna"
+}}
+
+Responde solo en formato JSON sin texto adicional.
+"""
             respuesta = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0
             )
-            
+
             contenido_decision = respuesta.choices[0].message.content.strip()
-            
-            # Eliminar posibles delimitadores de código
+
             if contenido_decision.startswith("```") and contenido_decision.endswith("```"):
                 contenido_decision = contenido_decision.strip("```").strip()
-            
+
             try:
                 decision = json.loads(contenido_decision)
             except json.JSONDecodeError as e:
                 print(f"⚠️ Error al decodificar JSON de OpenAI: {e}")
                 decision = {"accion": "ninguna"}
-
 
             if decision.get("accion") == "guardar_nota":
                 notas_collection.insert_one({"contenido": decision["contenido"]})
@@ -170,7 +174,7 @@ async def whatsapp_webhook(request: Request):
                     response_message = (
                         "⏰ Recordatorios guardados:\n" +
                         "\n".join([
-                            f"- {rec['tarea']} para el {rec['fecha_hora'].strftime('%Y-%m-%d %H:%M')}" 
+                            f"- {rec['tarea']} para el {rec['fecha_hora'].strftime('%Y-%m-%d %H:%M')}"
                             for rec in recordatorios
                         ])
                     )
@@ -194,4 +198,3 @@ async def whatsapp_webhook(request: Request):
 </Response>
 """
         return Response(content=error_response, media_type="text/xml")
-
