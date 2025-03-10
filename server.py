@@ -50,6 +50,9 @@ def extraer_recordatorio(mensaje_usuario):
     )
 
     contenido = respuesta.choices[0].message.content
+    if contenido.strip().lower() == "null":
+        return None
+
     try:
         datos_recordatorio = json.loads(contenido)
         fecha_hora_obj = datetime.strptime(datos_recordatorio["fecha_hora"], "%Y-%m-%d %H:%M")
@@ -67,7 +70,7 @@ async def whatsapp_webhook(request: Request):
 
         datos_recordatorio = extraer_recordatorio(message)
 
-        if datos_recordatorio and datos_recordatorio.get("tarea"):
+        if datos_recordatorio:
             recordatorio = {
                 "tarea": datos_recordatorio["tarea"],
                 "fecha_hora": datos_recordatorio["fecha_hora"],
@@ -76,7 +79,7 @@ async def whatsapp_webhook(request: Request):
             }
             recordatorios_collection.insert_one(recordatorio)
 
-            response_message = f"⏰ Recordatorio guardado: {datos_recordatorio['tarea']} para el {datos_recordatorio['fecha_hora'].strftime('%Y-%m-%d %H:%M')}."
+            response_message = f"⏰ Recordatorio guardado: {datos_recordatorio['tarea']} para el {datos_recordatorio['fecha_hora'].strftime('%Y-%m-%d %H:%M')}"
         else:
             prompt = f"""
             El usuario escribió: "{message}".
