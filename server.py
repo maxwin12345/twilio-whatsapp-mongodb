@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request, Form
 from pymongo import MongoClient
 import os
+from openai import OpenAI
 from starlette.responses import Response
 
 app = FastAPI()
@@ -11,6 +12,18 @@ client = MongoClient(MONGO_URI)
 db = client["assistant"]
 notas_collection = db["notas"]
 
+# Configurar OpenAI GPT
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")  # Debes agregar esta variable en Render
+client_openai = OpenAI(api_key=OPENAI_API_KEY)
+
+def get_gpt_response(user_message):
+    response = client_openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "system", "content": "Eres un asistente personal en WhatsApp, ayuda a Max con notas, recordatorios y eventos."},
+                  {"role": "user", "content": user_message}]
+    )
+    return response['choices'][0]['message']['content'].strip()
+
 @app.post("/whatsapp_webhook")
 async def whatsapp_webhook(request: Request):
     try:
@@ -18,25 +31,19 @@ async def whatsapp_webhook(request: Request):
         message = form_data.get("Body", "").strip()
         sender = form_data.get("From", "").strip()
 
-        response_message = "🤖 Comandos disponibles:\n- 'Apunta [nota]'\n- 'Listar notas'"
-
         if message.lower().startswith("apunta"):
-            contenido = message[7:].strip()  # Extraer el contenido después de "Apunta"
+            contenido = message[7:].strip()
             if contenido:
-                nueva_nota = {"contenido": contenido}
-                notas_collection.insert_one(nueva_nota)
+                notas_collection.insert_one({"contenido": contenido})
                 response_message = f"✅ Nota guardada: {contenido}"
             else:
-                response_message = "⚠️ No escribiste una nota válida después de 'Apunta'."
-
+                response_message = "⚠️ No escribiste una nota válida."
         elif message.lower() == "listar notas":
             notas = list(notas_collection.find({}, {"_id": 0, "contenido": 1}))
-            if notas:
-                response_message = "📝 Notas guardadas:\n" + "\n".join([f"- {nota['contenido']}" for nota in notas])
-            else:
-                response_message = "📂 No tienes notas guardadas."
+            response_message = "📝 Notas guardadas:\n" + "\n".join([f"- {nota['contenido']}" for nota in notas]) if notas else "📂 No tienes notas guardadas."
+        else:
+            response_message = get_gpt_response(message)  # Respuesta de OpenAI
 
-        # Responder en formato XML para Twilio
         twilio_response = f"""
         <Response>
             <Message>{response_message}</Message>
@@ -45,6 +52,6 @@ async def whatsapp_webhook(request: Request):
         return Response(content=twilio_response, media_type="application/xml")
 
     except Exception as e:
-        print(f"Error en webhook: {e}")  # Agregar logs en consola
-        return Response(content="<Response><Message>❌ Error en el servidor. Inténtalo más tarde.</Message></Response>",
-                        media_type="application/xml")
+        print(f"Error en webhook: {e}")
+        return Response(content="<Response><Message>❌ Error en el servidor.</Message></Response>", media_type="application/xml")
+
