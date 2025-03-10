@@ -15,9 +15,6 @@ notas_collection = db["notas"]
 # Configurar OpenAI GPT
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
-import openai  # Asegúrate de importar correctamente OpenAI
-
-import openai  # Asegúrate de importar OpenAI correctamente
 
 def get_gpt_response(user_message):
     response = openai.ChatCompletion.create(
@@ -27,8 +24,7 @@ def get_gpt_response(user_message):
             {"role": "user", "content": user_message}
         ]
     )
-    return response["choices"][0]["message"]["content"].strip()  # Cambio en la estructura de acceso
-
+    return response.choices[0].message.content.strip()  # ✅ Corrección en el acceso al contenido
 
 
 @app.post("/whatsapp_webhook")
