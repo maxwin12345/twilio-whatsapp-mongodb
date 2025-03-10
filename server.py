@@ -31,7 +31,7 @@ def get_gpt_response(user_message):
 
 def extraer_recordatorio(mensaje_usuario):
     prompt = f"""
-    Extrae la tarea, fecha y hora del siguiente mensaje si es un recordatorio.
+    Extrae la tarea, fecha y hora exactas del siguiente mensaje si es un recordatorio.
     Si no es un recordatorio devuelve null.
 
     Mensaje: \"{mensaje_usuario}\"
@@ -52,8 +52,10 @@ def extraer_recordatorio(mensaje_usuario):
     contenido = respuesta.choices[0].message.content
     try:
         datos_recordatorio = json.loads(contenido)
+        fecha_hora_obj = datetime.strptime(datos_recordatorio["fecha_hora"], "%Y-%m-%d %H:%M")
+        datos_recordatorio["fecha_hora"] = fecha_hora_obj.strftime("%Y-%m-%d %H:%M")
         return datos_recordatorio
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, ValueError, KeyError):
         return None
 
 @app.post("/whatsapp_webhook")
@@ -66,20 +68,15 @@ async def whatsapp_webhook(request: Request):
         datos_recordatorio = extraer_recordatorio(message)
 
         if datos_recordatorio and datos_recordatorio.get("tarea"):
-            try:
-                fecha_hora_obj = datetime.strptime(datos_recordatorio["fecha_hora"], "%Y-%m-%d %H:%M")
-                recordatorio = {
-                    "tarea": datos_recordatorio["tarea"],
-                    "fecha_hora": fecha_hora_obj,
-                    "numero_usuario": sender,
-                    "recordatorio_enviado": False
-                }
-                recordatorios_collection.insert_one(recordatorio)
+            recordatorio = {
+                "tarea": datos_recordatorio["tarea"],
+                "fecha_hora": datetime.strptime(datos_recordatorio["fecha_hora"], "%Y-%m-%d %H:%M"),
+                "numero_usuario": sender,
+                "recordatorio_enviado": False
+            }
+            recordatorios_collection.insert_one(recordatorio)
 
-                response_message = f"⏰ Recordatorio guardado: {datos_recordatorio['tarea']} para el {datos_recordatorio['fecha_hora']}."
-
-            except ValueError as ve:
-                response_message = f"⚠️ Error con el formato de fecha/hora: {ve}. Asegúrate de escribir claramente el día y la hora."
+            response_message = f"⏰ Recordatorio guardado: {datos_recordatorio['tarea']} para el {datos_recordatorio['fecha_hora']}."
         else:
             response_message = get_gpt_response(message)
 
@@ -93,3 +90,4 @@ async def whatsapp_webhook(request: Request):
     except Exception as e:
         print(f"Error en webhook: {e}")
         return Response(content="<Response><Message>❌ Error en el servidor.</Message></Response>", media_type="application/xml")
+
