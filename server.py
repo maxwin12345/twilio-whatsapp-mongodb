@@ -1,7 +1,7 @@
-from fastapi import FastAPI, Request, Form
+from fastapi import FastAPI, Request
 from pymongo import MongoClient
 import os
-import openai  # Asegúrate de importar OpenAI correctamente
+import openai
 from starlette.responses import Response
 
 app = FastAPI()
@@ -12,23 +12,18 @@ client = MongoClient(MONGO_URI)
 db = client["assistant"]
 notas_collection = db["notas"]
 
-# Configurar OpenAI GPT
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-
-
-
-client_openai = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+# Configuración correcta para OpenAI >=1.0.0
+openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 def get_gpt_response(user_message):
-    completion = client_openai.chat.completions.create(
+    response = openai.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
             {"role": "system", "content": "Eres un asistente personal en WhatsApp, ayuda a Max con notas, recordatorios y eventos."},
             {"role": "user", "content": user_message}
         ]
     )
-    return completion.choices[0].message.content.strip()
-
+    return response.choices[0].message.content.strip()
 
 @app.post("/whatsapp_webhook")
 async def whatsapp_webhook(request: Request):
@@ -48,7 +43,7 @@ async def whatsapp_webhook(request: Request):
             notas = list(notas_collection.find({}, {"_id": 0, "contenido": 1}))
             response_message = "📝 Notas guardadas:\n" + "\n".join([f"- {nota['contenido']}" for nota in notas]) if notas else "📂 No tienes notas guardadas."
         else:
-            response_message = get_gpt_response(message)  # Respuesta de OpenAI
+            response_message = get_gpt_response(message)
 
         twilio_response = f"""
         <Response>
@@ -60,4 +55,3 @@ async def whatsapp_webhook(request: Request):
     except Exception as e:
         print(f"Error en webhook: {e}")
         return Response(content="<Response><Message>❌ Error en el servidor.</Message></Response>", media_type="application/xml")
-
