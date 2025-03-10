@@ -3,26 +3,31 @@ from pymongo import MongoClient
 from starlette.responses import Response
 from datetime import datetime, timedelta
 import os
+import openai
 import json
-from openai import OpenAI
 
 app = FastAPI()
 
-# Conexión MongoDB Atlas
+# -------------------------------------------------------------------
+# 1. CONFIGURACIONES BÁSICAS
+# -------------------------------------------------------------------
 MONGO_URI = os.environ.get("MONGO_URI")
-client_mongo = MongoClient(MONGO_URI)
-db = client_mongo["assistant"]
+mongo_client = MongoClient(MONGO_URI)
+db = mongo_client["assistant"]
 notas_collection = db["notas"]
 recordatorios_collection = db["recordatorios"]
 
-# Configuración nueva API OpenAI
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+openai.api_key = os.environ.get("OPENAI_API_KEY")
 
-def get_gpt_response(user_message):
+# -------------------------------------------------------------------
+# 2. FUNCIÓN PARA RESPUESTAS GENERALES DE GPT
+# -------------------------------------------------------------------
+def get_gpt_response(user_message: str) -> str:
     """
-    Llama a la API de OpenAI para obtener una respuesta genérica.
+    Llama a la API de OpenAI para obtener una respuesta genérica
+    (cuando no es nota ni recordatorio).
     """
-    response = client.chat.completions.create(
+    response = openai.completions.create(
         model="gpt-3.5-turbo",
         messages=[
             {
@@ -38,20 +43,24 @@ def get_gpt_response(user_message):
     )
     return response.choices[0].message.content.strip()
 
-def extraer_recordatorio(mensaje_usuario):
+# -------------------------------------------------------------------
+# 3. FUNCIÓN PARA EXTRAER RECORDATORIO
+# -------------------------------------------------------------------
+def extraer_recordatorio(mensaje_usuario: str):
     """
     Intenta extraer un recordatorio en formato JSON.
     Maneja fechas relativas como 'mañana' y 'pasado mañana'.
+    Si no se detecta recordatorio, devuelve None.
     """
     hoy = datetime.now()
     manana = hoy + timedelta(days=1)
     pasado_manana = hoy + timedelta(days=2)
 
-    # Prompt para OpenAI, indicando cómo debe interpretar "mañana" y "pasado mañana"
+    # Prompt con instrucciones claras
     system_instructions = f"""
 Hoy es {hoy.strftime('%Y-%m-%d')}.
-Si el usuario dice "mañana", asume que es {manana.strftime('%Y-%m-%d')}.
-Si el usuario dice "pasado mañana", asume que es {pasado_manana.strftime('%Y-%m-%d')}.
+Si el usuario dice 'mañana', asume que es {manana.strftime('%Y-%m-%d')}.
+Si el usuario dice 'pasado mañana', asume que es {pasado_manana.strftime('%Y-%m-%d')}.
 Extrae la tarea y la fecha exacta (en formato YYYY-MM-DD HH:MM) del siguiente mensaje si es un recordatorio.
 Si no es un recordatorio, devuelve 'null' (sin comillas).
 La respuesta debe ser un JSON válido, por ejemplo:
@@ -64,15 +73,18 @@ No incluyas texto adicional fuera de ese JSON.
 
     user_prompt = f'Mensaje: "{mensaje_usuario}"'
 
-    # Llamada a la API
-    respuesta = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": system_instructions},
-            {"role": "user", "content": user_prompt}
-        ],
-        temperature=0
-    )
+    try:
+        respuesta = openai.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": system_instructions},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0
+        )
+    except Exception as e:
+        print(f"⚠️ Error al llamar a OpenAI: {e}")
+        return None
 
     contenido = respuesta.choices[0].message.content.strip()
 
@@ -80,15 +92,15 @@ No incluyas texto adicional fuera de ese JSON.
     if contenido.startswith("```") and contenido.endswith("```"):
         contenido = contenido.strip("```").strip()
 
-    # Si la respuesta es 'null' o algo que no sea JSON válido, retornamos None
     if contenido.lower() == "null":
         return None
 
+    # Intentamos parsear el JSON
     try:
         datos_recordatorio = json.loads(contenido)
-        # Validamos que existan las claves esperadas
-        fecha_str = datos_recordatorio["fecha_hora"]
+        # Validamos las claves
         tarea_str = datos_recordatorio["tarea"]
+        fecha_str = datos_recordatorio["fecha_hora"]
 
         # Convertimos la fecha al objeto datetime
         fecha_hora_obj = datetime.strptime(fecha_str, "%Y-%m-%d %H:%M")
@@ -96,26 +108,28 @@ No incluyas texto adicional fuera de ese JSON.
 
         print(f"✅ Recordatorio extraído: {datos_recordatorio}")
         return datos_recordatorio
-
     except (json.JSONDecodeError, ValueError, KeyError) as e:
         print(f"⚠️ Error al extraer recordatorio: {e}")
         return None
 
+# -------------------------------------------------------------------
+# 4. ENDPOINT PRINCIPAL /whatsapp_webhook
+# -------------------------------------------------------------------
 @app.post("/whatsapp_webhook")
 async def whatsapp_webhook(request: Request):
-    """
-    Endpoint que Twilio llama cada vez que llega un mensaje de WhatsApp.
-    """
     try:
+        # Obtener datos del formulario
         form_data = await request.form()
         message = form_data.get("Body", "").strip()
         sender = form_data.get("From", "").strip()
 
-        # Intentamos extraer recordatorio
+        print(f"📩 Mensaje recibido: '{message}' de {sender}")
+
+        # Intentamos extraer un recordatorio
         datos_recordatorio = extraer_recordatorio(message)
 
         if datos_recordatorio:
-            # Guardar el recordatorio
+            # Guardar en MongoDB
             recordatorio = {
                 "tarea": datos_recordatorio["tarea"],
                 "fecha_hora": datos_recordatorio["fecha_hora"],
@@ -129,8 +143,8 @@ async def whatsapp_webhook(request: Request):
                 f"para el {datos_recordatorio['fecha_hora'].strftime('%Y-%m-%d %H:%M')}"
             )
         else:
-            # No es un recordatorio, veamos qué acción se debe tomar
-            prompt = f"""
+            # Si no es recordatorio, decidimos acción (nota, listar, etc.)
+            decision_prompt = f"""
 El usuario escribió: "{message}".
 
 Decide claramente la acción que se debe tomar y responde ÚNICAMENTE con el JSON correspondiente:
@@ -171,24 +185,25 @@ Si no entiende el mensaje:
 
 Responde solo en formato JSON sin texto adicional.
 """
-            respuesta = client.chat.completions.create(
+            respuesta = openai.completions.create(
                 model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt}],
+                messages=[{"role": "user", "content": decision_prompt}],
                 temperature=0
             )
-
             contenido_decision = respuesta.choices[0].message.content.strip()
 
+            # Eliminar posibles bloques de código
             if contenido_decision.startswith("```") and contenido_decision.endswith("```"):
                 contenido_decision = contenido_decision.strip("```").strip()
 
+            # Parseamos la decisión
             try:
                 decision = json.loads(contenido_decision)
             except json.JSONDecodeError as e:
                 print(f"⚠️ Error al decodificar JSON de OpenAI: {e}")
                 decision = {"accion": "ninguna"}
 
-            # Procesamos la decisión
+            # Procesar acción
             if decision.get("accion") == "guardar_nota":
                 notas_collection.insert_one({"contenido": decision["contenido"]})
                 response_message = f"✅ Nota guardada: {decision['contenido']}"
@@ -210,36 +225,40 @@ Responde solo en formato JSON sin texto adicional.
                 if recordatorios:
                     lines = []
                     for rec in recordatorios:
-                        # Convierto fecha a str si es datetime
-                        fecha_str = rec["fecha_hora"].strftime("%Y-%m-%d %H:%M") if isinstance(rec["fecha_hora"], datetime) else rec["fecha_hora"]
+                        # Convertir fecha a string si es datetime
+                        if isinstance(rec["fecha_hora"], datetime):
+                            fecha_str = rec["fecha_hora"].strftime("%Y-%m-%d %H:%M")
+                        else:
+                            fecha_str = rec["fecha_hora"]
                         lines.append(f"- {rec['_id']}: {rec['tarea']} para el {fecha_str}")
                     response_message = "⏰ Recordatorios guardados:\n" + "\n".join(lines)
                 else:
                     response_message = "📂 No tienes recordatorios guardados."
 
             elif decision.get("accion") == "actualizar_recordatorio":
-                # Aquí deberías buscar el recordatorio por ID y actualizarlo
-                # Ejemplo de actualización (requiere que hayas guardado el _id en la base):
-                # recordatorios_collection.update_one({"_id": ObjectId(decision["id"])}, {"$set": {"fecha_hora": nueva_fecha}})
+                # Por implementar: buscar por ID y actualizar
                 response_message = "⚠️ Aún no se implementa la actualización de recordatorios."
 
             elif decision.get("accion") == "eliminar_recordatorio":
-                # Aquí deberías buscar el recordatorio por ID y eliminarlo
-                # Ejemplo:
-                # recordatorios_collection.delete_one({"_id": ObjectId(decision["id"])})
+                # Por implementar: buscar por ID y eliminar
                 response_message = "⚠️ Aún no se implementa la eliminación de recordatorios."
 
             else:
-                # Simplemente responde con GPT
+                # Acción "ninguna" => GPT genérico
                 response_message = get_gpt_response(message)
 
-        # Construimos la respuesta para Twilio
+        # -------------------------------------------------------------------
+        # Respuesta final a Twilio
+        # -------------------------------------------------------------------
         twilio_response = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Message>{response_message}</Message>
 </Response>
 """
-        return Response(content=twilio_response, media_type="text/xml")
+        print("➡️ TwiML final a Twilio:\n", twilio_response)
+
+        # Usa "application/xml" para Twilio
+        return Response(content=twilio_response, media_type="application/xml")
 
     except Exception as e:
         print(f"❌ Error en webhook: {e}")
@@ -248,4 +267,4 @@ Responde solo en formato JSON sin texto adicional.
     <Message>❌ Error en el servidor.</Message>
 </Response>
 """
-        return Response(content=error_response, media_type="text/xml")
+        return Response(content=error_response, media_type="application/xml")
