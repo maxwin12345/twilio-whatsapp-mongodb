@@ -18,10 +18,13 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 def get_gpt_response(user_message):
     response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
-        messages=[{"role": "system", "content": "Eres un asistente personal en WhatsApp, ayuda a Max con notas, recordatorios y eventos."},
-                  {"role": "user", "content": user_message}]
+        messages=[
+            {"role": "system", "content": "Eres un asistente personal en WhatsApp, ayuda a Max con notas, recordatorios y eventos."},
+            {"role": "user", "content": user_message}
+        ]
     )
-    return response["choices"][0]["message"]["content"].strip()
+    return response.choices[0].message.content.strip()
+
 
 @app.post("/whatsapp_webhook")
 async def whatsapp_webhook(request: Request):
