@@ -70,26 +70,27 @@ async def whatsapp_webhook(request: Request):
         if datos_recordatorio and datos_recordatorio.get("tarea"):
             recordatorio = {
                 "tarea": datos_recordatorio["tarea"],
-                "fecha_hora": datetime.strptime(datos_recordatorio["fecha_hora"], "%Y-%m-%d %H:%M"),
+                "fecha_hora": datos_recordatorio["fecha_hora"],
                 "numero_usuario": sender,
                 "recordatorio_enviado": False
             }
-            
             recordatorios_collection.insert_one(recordatorio)
 
-            response_message = f"⏰ Recordatorio guardado: {datos_recordatorio['tarea']} para el {datos_recordatorio['fecha_hora']}."
+            response_message = f"⏰ Recordatorio guardado: {datos_recordatorio['tarea']} para el {datos_recordatorio['fecha_hora'].strftime('%Y-%m-%d %H:%M')}."
         else:
-            # Si no es un recordatorio, usa GPT para determinar si guardar nota o listar
             prompt = f"""
-            El usuario escribió el siguiente mensaje: "{message}".
+            El usuario escribió: "{message}".
 
-            Si el usuario quiere guardar una nota, responde solo con:
+            Si quiere guardar una nota responde:
             {{"accion": "guardar_nota", "contenido": "contenido de la nota"}}
 
-            Si el usuario quiere listar sus notas guardadas, responde solo con:
+            Si quiere listar sus notas responde:
             {{"accion": "listar_notas"}}
 
-            Si ninguna aplica responde solo con:
+            Si quiere listar sus recordatorios responde:
+            {{"accion": "listar_recordatorios"}}
+
+            Si ninguna aplica responde:
             {{"accion": "ninguna"}}
             """
 
@@ -108,6 +109,10 @@ async def whatsapp_webhook(request: Request):
             elif decision["accion"] == "listar_notas":
                 notas = list(notas_collection.find({}, {"_id": 0, "contenido": 1}))
                 response_message = "📝 Notas guardadas:\n" + "\n".join([f"- {nota['contenido']}" for nota in notas]) if notas else "📂 No tienes notas guardadas."
+
+            elif decision["accion"] == "listar_recordatorios":
+                recordatorios = list(recordatorios_collection.find({"numero_usuario": sender}, {"_id": 0, "tarea": 1, "fecha_hora": 1}))
+                response_message = "⏰ Recordatorios guardados:\n" + "\n".join([f"- {rec['tarea']} para el {rec['fecha_hora'].strftime('%Y-%m-%d %H:%M')}" for rec in recordatorios]) if recordatorios else "📂 No tienes recordatorios guardados."
 
             else:
                 response_message = get_gpt_response(message)
