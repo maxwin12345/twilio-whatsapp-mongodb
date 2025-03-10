@@ -20,14 +20,13 @@ recordatorios_collection = db["recordatorios"]
 openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 # -------------------------------------------------------------------
-# 2. FUNCIÓN PARA RESPUESTAS GENERALES DE GPT
+# 2. FUNCIÓN PARA RESPUESTAS GENERALES DE GPT (CHAT COMPLETION)
 # -------------------------------------------------------------------
 def get_gpt_response(user_message: str) -> str:
     """
-    Llama a la API de OpenAI para obtener una respuesta genérica
-    (cuando no es nota ni recordatorio).
+    Llama a la API de OpenAI (ChatCompletion) para obtener una respuesta genérica.
     """
-    response = openai.completions.create(
+    response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
         messages=[
             {
@@ -44,7 +43,7 @@ def get_gpt_response(user_message: str) -> str:
     return response.choices[0].message.content.strip()
 
 # -------------------------------------------------------------------
-# 3. FUNCIÓN PARA EXTRAER RECORDATORIO
+# 3. FUNCIÓN PARA EXTRAER RECORDATORIO (CHAT COMPLETION)
 # -------------------------------------------------------------------
 def extraer_recordatorio(mensaje_usuario: str):
     """
@@ -74,7 +73,7 @@ No incluyas texto adicional fuera de ese JSON.
     user_prompt = f'Mensaje: "{mensaje_usuario}"'
 
     try:
-        respuesta = openai.completions.create(
+        respuesta = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": system_instructions},
@@ -185,7 +184,7 @@ Si no entiende el mensaje:
 
 Responde solo en formato JSON sin texto adicional.
 """
-            respuesta = openai.completions.create(
+            respuesta = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": decision_prompt}],
                 temperature=0
@@ -257,7 +256,6 @@ Responde solo en formato JSON sin texto adicional.
 """
         print("➡️ TwiML final a Twilio:\n", twilio_response)
 
-        # Usa "application/xml" para Twilio
         return Response(content=twilio_response, media_type="application/xml")
 
     except Exception as e:
@@ -268,3 +266,4 @@ Responde solo en formato JSON sin texto adicional.
 </Response>
 """
         return Response(content=error_response, media_type="application/xml")
+
