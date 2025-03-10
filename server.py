@@ -87,32 +87,64 @@ async def whatsapp_webhook(request: Request):
             )
         else:
             prompt = f"""
-El usuario escribió: "{message}".
-
-Decide claramente y responde únicamente con el JSON correspondiente:
-
-{{"accion": "guardar_nota", "contenido": "Texto de la nota"}}
-{{"accion": "listar_notas"}}
-{{"accion": "listar_recordatorios"}}
-{{"accion": "ninguna"}}
-"""
-
+            El usuario escribió: "{message}".
+            
+            Decide claramente la acción que se debe tomar y responde ÚNICAMENTE con el JSON correspondiente:
+            
+            Si es una nota:
+            {{
+              "accion": "guardar_nota",
+              "contenido": "Texto de la nota"
+            }}
+            
+            Si el usuario quiere ver sus notas:
+            {{
+              "accion": "listar_notas"
+            }}
+            
+            Si el usuario quiere ver sus recordatorios:
+            {{
+              "accion": "listar_recordatorios"
+            }}
+            
+            Si el usuario quiere actualizar un recordatorio:
+            {{
+              "accion": "actualizar_recordatorio",
+              "id": "ID del recordatorio",
+              "nueva_fecha": "YYYY-MM-DD HH:MM"
+            }}
+            
+            Si el usuario quiere eliminar un recordatorio:
+            {{
+              "accion": "eliminar_recordatorio",
+              "id": "ID del recordatorio"
+            }}
+            
+            Si no entiende el mensaje:
+            {{
+              "accion": "ninguna"
+            }}
+            
+            Responde solo en formato JSON sin texto adicional.
+            """
             respuesta = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0
             )
-
+            
             contenido_decision = respuesta.choices[0].message.content.strip()
             
+            # Eliminar posibles delimitadores de código
             if contenido_decision.startswith("```") and contenido_decision.endswith("```"):
                 contenido_decision = contenido_decision.strip("```").strip()
             
             try:
                 decision = json.loads(contenido_decision)
             except json.JSONDecodeError as e:
-                print(f"Error al decodificar JSON de decision: {e}")
+                print(f"⚠️ Error al decodificar JSON de OpenAI: {e}")
                 decision = {"accion": "ninguna"}
+
 
             if decision.get("accion") == "guardar_nota":
                 notas_collection.insert_one({"contenido": decision["contenido"]})
