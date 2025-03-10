@@ -16,15 +16,18 @@ notas_collection = db["notas"]
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 
+
+client_openai = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
 def get_gpt_response(user_message):
-    response = openai.ChatCompletion.create(
+    completion = client_openai.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
             {"role": "system", "content": "Eres un asistente personal en WhatsApp, ayuda a Max con notas, recordatorios y eventos."},
             {"role": "user", "content": user_message}
         ]
     )
-    return response.choices[0].message.content.strip()  # ✅ Corrección en el acceso al contenido
+    return completion.choices[0].message.content.strip()
 
 
 @app.post("/whatsapp_webhook")
