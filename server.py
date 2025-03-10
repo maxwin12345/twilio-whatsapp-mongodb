@@ -17,6 +17,8 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 import openai  # Asegúrate de importar correctamente OpenAI
 
+import openai  # Asegúrate de importar OpenAI correctamente
+
 def get_gpt_response(user_message):
     response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
@@ -25,7 +27,8 @@ def get_gpt_response(user_message):
             {"role": "user", "content": user_message}
         ]
     )
-    return response.choices[0].message.content.strip()
+    return response["choices"][0]["message"]["content"].strip()  # Cambio en la estructura de acceso
+
 
 
 @app.post("/whatsapp_webhook")
