@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from pymongo import MongoClient
 from starlette.responses import Response
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import openai
 import json
@@ -79,14 +79,14 @@ async def whatsapp_webhook(request: Request):
             }
             recordatorios_collection.insert_one(recordatorio)
 
-            response_message = f"⏰ Recordatorio guardado: {datos_recordatorio['tarea']} para el {datos_recordatorio['fecha_hora'].strftime('%Y-%m-%d %H:%M')}"
+            response_message = f"⏰ Recordatorio guardado: '{datos_recordatorio['tarea']}' para el {datos_recordatorio['fecha_hora'].strftime('%Y-%m-%d %H:%M')}"
         else:
             prompt = f"""
             El usuario escribió: \"{message}\".
 
-            Decide claramente y responde únicamente con el JSON correspondiente, sin explicaciones adicionales:
+            Decide claramente y responde únicamente con el JSON correspondiente:
 
-            {{"accion": "guardar_nota", "contenido": "contenido"}}
+            {{"accion": "guardar_nota", "contenido": "Texto de la nota"}}
             {{"accion": "listar_notas"}}
             {{"accion": "listar_recordatorios"}}
             {{"accion": "ninguna"}}
