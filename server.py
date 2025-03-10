@@ -30,23 +30,23 @@ def get_gpt_response(user_message):
 
 def extraer_recordatorio(mensaje_usuario):
     prompt = f"""
-Extrae la tarea, fecha y hora exactas del siguiente mensaje si es un recordatorio.
-Si no es un recordatorio devuelve null.
+    Extrae la tarea, fecha y hora exactas del siguiente mensaje si es un recordatorio.
+    Si no es un recordatorio devuelve null.
 
-Mensaje: "{mensaje_usuario}"
+    Mensaje: \"{mensaje_usuario}\"
 
-Devuelve en formato JSON:
-{{
-  "tarea": "string",
-  "fecha_hora": "YYYY-MM-DD HH:MM"
-}}
-"""
+    Devuelve en formato JSON:
+    {{
+      "tarea": "string",
+      "fecha_hora": "YYYY-MM-DD HH:MM"
+    }}
+    """
     respuesta = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
-        messages=[{"role": "user", "content": prompt}],
+        messages=[{"role": "system", "content": prompt}],
         temperature=0
     )
-    contenido = respuesta.choices[0].message.content.strip()
+    contenido = respuesta.choices[0].message.content
     
     # Elimina posibles delimitadores de bloques de código
     if contenido.startswith("```") and contenido.endswith("```"):
@@ -87,32 +87,23 @@ async def whatsapp_webhook(request: Request):
             )
         else:
             prompt = f"""
-El usuario escribió: "{message}".
+            El usuario escribió: \"{message}\".
 
-Decide claramente y responde únicamente con el JSON correspondiente:
-{{
-  "accion": "guardar_nota", "contenido": "Texto de la nota"
-}}
-{{
-  "accion": "listar_notas"
-}}
-{{
-  "accion": "listar_recordatorios"
-}}
-{{
-  "accion": "ninguna"
-}}
-"""
+            Decide claramente y responde únicamente con el JSON correspondiente:
+
+            {{"accion": "guardar_nota", "contenido": "Texto de la nota"}}
+            {{"accion": "listar_notas"}}
+            {{"accion": "listar_recordatorios"}}
+            {{"accion": "ninguna"}}
+            """
             respuesta = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt}],
+                messages=[{"role": "system", "content": prompt}],
                 temperature=0
             )
             contenido_decision = respuesta.choices[0].message.content.strip()
-            
             if contenido_decision.startswith("```") and contenido_decision.endswith("```"):
                 contenido_decision = contenido_decision.strip("```").strip()
-            
             try:
                 decision = json.loads(contenido_decision)
             except json.JSONDecodeError as e:
