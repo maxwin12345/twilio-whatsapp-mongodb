@@ -31,21 +31,26 @@ def get_gpt_response(user_message):
 # ✅ Función para extraer recordatorios automáticamente
 def extraer_recordatorio(mensaje_usuario):
     prompt = f"""
-    Extrae la tarea, fecha y hora del siguiente mensaje si es un recordatorio.
-    Si no es un recordatorio devuelve null.
+    Del siguiente mensaje identifica claramente si se trata de un recordatorio o no.
+
+    Si es un recordatorio, extrae:
+    - tarea (la acción del recordatorio)
+    - fecha_hora (formato exacto YYYY-MM-DD HH:MM en 24 horas)
+
+    Si no detectas claramente una fecha y hora, devuelve null.
+
+    Ejemplos:
+    - "Recuérdame llamar mañana a las 10am" -> {{"tarea":"llamar","fecha_hora":"2025-03-10 10:00"}}
+    - "Hola, ¿cómo estás?" -> null
 
     Mensaje: "{mensaje_usuario}"
 
-    Devuelve en formato JSON:
-    {{
-      "tarea": "string",
-      "fecha_hora": "YYYY-MM-DD HH:MM"
-    }}
+    Responde ÚNICAMENTE en formato JSON válido sin explicaciones adicionales.
     """
 
     respuesta = openai.chat.completions.create(
         model="gpt-3.5-turbo",
-        messages=[{"role": "system", "content": prompt}],
+        messages=[{"role": "user", "content": prompt}],
         temperature=0
     )
 
