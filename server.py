@@ -84,12 +84,12 @@ async def whatsapp_webhook(request: Request):
             prompt = f"""
             El usuario escribió: \"{message}\".
 
-            Decide claramente y responde únicamente con el JSON correspondiente:
+            Decide claramente y responde únicamente con el JSON correspondiente, sin explicaciones adicionales:
 
-            {"accion": "guardar_nota", "contenido": "contenido"}
-            {"accion": "listar_notas"}
-            {"accion": "listar_recordatorios"}
-            {"accion": "ninguna"}
+            {{"accion": "guardar_nota", "contenido": "contenido"}}
+            {{"accion": "listar_notas"}}
+            {{"accion": "listar_recordatorios"}}
+            {{"accion": "ninguna"}}
             """
 
             respuesta = openai.chat.completions.create(
