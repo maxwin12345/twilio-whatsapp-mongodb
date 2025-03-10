@@ -5,6 +5,7 @@ from datetime import datetime
 import os
 import openai
 import json
+from openai import ChatCompletion  # Importa directamente ChatCompletion
 
 app = FastAPI()
 
@@ -19,7 +20,7 @@ recordatorios_collection = db["recordatorios"]
 openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 def get_gpt_response(user_message):
-    response = openai.ChatCompletion.create(
+    response = ChatCompletion.create(
         model="gpt-3.5-turbo",
         messages=[
             {"role": "system", "content": "Eres un asistente personal en WhatsApp, ayuda a Max con notas, recordatorios y eventos."},
@@ -41,7 +42,7 @@ def extraer_recordatorio(mensaje_usuario):
       "fecha_hora": "YYYY-MM-DD HH:MM"
     }}
     """
-    respuesta = openai.ChatCompletion.create(
+    respuesta = ChatCompletion.create(
         model="gpt-3.5-turbo",
         messages=[{"role": "system", "content": prompt}],
         temperature=0
@@ -96,7 +97,7 @@ async def whatsapp_webhook(request: Request):
             {{"accion": "listar_recordatorios"}}
             {{"accion": "ninguna"}}
             """
-            respuesta = openai.ChatCompletion.create(
+            respuesta = ChatCompletion.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "system", "content": prompt}],
                 temperature=0
@@ -128,7 +129,6 @@ async def whatsapp_webhook(request: Request):
                     )
                 )
                 if recordatorios:
-                    # Si se almacenó la fecha como string, se reconvierte a datetime
                     for rec in recordatorios:
                         if isinstance(rec["fecha_hora"], str):
                             rec["fecha_hora"] = datetime.strptime(rec["fecha_hora"], "%Y-%m-%d %H:%M")
