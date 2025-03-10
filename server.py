@@ -1,21 +1,21 @@
 from fastapi import FastAPI, Request
 from pymongo import MongoClient
+from starlette.responses import Response
+from datetime import datetime
 import os
 import openai
-from starlette.responses import Response
 import json
-from datetime import datetime
 
 app = FastAPI()
 
-# Conexión con MongoDB Atlas
+# Conexión MongoDB Atlas
 MONGO_URI = os.environ.get("MONGO_URI")
 client = MongoClient(MONGO_URI)
 db = client["assistant"]
 notas_collection = db["notas"]
 recordatorios_collection = db["recordatorios"]
 
-# Configuración correcta para OpenAI >=1.0.0
+# Configuración OpenAI
 openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 def get_gpt_response(user_message):
@@ -28,29 +28,24 @@ def get_gpt_response(user_message):
     )
     return response.choices[0].message.content.strip()
 
-# ✅ Función para extraer recordatorios automáticamente
+
 def extraer_recordatorio(mensaje_usuario):
     prompt = f"""
-    Del siguiente mensaje identifica claramente si se trata de un recordatorio o no.
+    Extrae la tarea, fecha y hora del siguiente mensaje si es un recordatorio.
+    Si no es un recordatorio devuelve null.
 
-    Si es un recordatorio, extrae:
-    - tarea (la acción del recordatorio)
-    - fecha_hora (formato exacto YYYY-MM-DD HH:MM en 24 horas)
+    Mensaje: \"{mensaje_usuario}\"
 
-    Si no detectas claramente una fecha y hora, devuelve null.
-
-    Ejemplos:
-    - "Recuérdame llamar mañana a las 10am" -> {{"tarea":"llamar","fecha_hora":"2025-03-10 10:00"}}
-    - "Hola, ¿cómo estás?" -> null
-
-    Mensaje: "{mensaje_usuario}"
-
-    Responde ÚNICAMENTE en formato JSON válido sin explicaciones adicionales.
+    Devuelve en formato JSON:
+    {{
+      "tarea": "string",
+      "fecha_hora": "YYYY-MM-DD HH:MM"
+    }}
     """
 
     respuesta = openai.chat.completions.create(
         model="gpt-3.5-turbo",
-        messages=[{"role": "user", "content": prompt}],
+        messages=[{"role": "system", "content": prompt}],
         temperature=0
     )
 
@@ -71,13 +66,8 @@ async def whatsapp_webhook(request: Request):
         datos_recordatorio = extraer_recordatorio(message)
 
         if datos_recordatorio and datos_recordatorio.get("tarea"):
-            fecha_hora_str = datos_recordatorio["fecha_hora"]
-
             try:
-                fecha_hora_obj = datetime.strptime(fecha_hora_str, "%Y-%m-%d %H:%M")
-            except ValueError:
-                response_message = "⚠️ La fecha y hora del recordatorio no es válida, intenta de nuevo."
-            else:
+                fecha_hora_obj = datetime.strptime(datos_recordatorio["fecha_hora"], "%Y-%m-%d %H:%M")
                 recordatorio = {
                     "tarea": datos_recordatorio["tarea"],
                     "fecha_hora": fecha_hora_obj,
@@ -86,10 +76,10 @@ async def whatsapp_webhook(request: Request):
                 }
                 recordatorios_collection.insert_one(recordatorio)
 
-                response_message = f"⏰ Recordatorio guardado: {datos_recordatorio['tarea']} para el {fecha_hora_str}."
-            except ValueError:
-                response_message = "⚠️ Formato de fecha inválido, intenta de nuevo."
+                response_message = f"⏰ Recordatorio guardado: {datos_recordatorio['tarea']} para el {datos_recordatorio['fecha_hora']}."
 
+            except ValueError as ve:
+                response_message = f"⚠️ Error con el formato de fecha/hora: {ve}. Asegúrate de escribir claramente el día y la hora."
         else:
             response_message = get_gpt_response(message)
 
