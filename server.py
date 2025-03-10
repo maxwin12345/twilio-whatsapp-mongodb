@@ -15,6 +15,8 @@ notas_collection = db["notas"]
 # Configurar OpenAI GPT
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
+import openai  # Asegúrate de importar correctamente OpenAI
+
 def get_gpt_response(user_message):
     response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
